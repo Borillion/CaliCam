@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include "camera_hal.h"
+#include "web_server.h"
 
 // put function declarations here:
 
@@ -19,21 +21,26 @@ void setup() {
   WiFi.begin(ssid, password);
   WiFi.setSleep(false);
 
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
+  while (WiFi.status() != WL_CONNECTED) {
+      delay(500);
+      Serial.print(".");
+  }
 
-    Serial.println("");
-    Serial.println("WiFi connected");
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.print(WiFi.localIP());
+  Serial.println("' to connect");
+  
+  esp_err_t esp_err = CameraHal::init();
+  if (esp_err != ESP_OK) {
+    Serial.printf("CameraHALInit failed with error 0x%x", esp_err);
+    return;
+  }
 
-    while (WiFi.status() == WL_CONNECTED) {
-      digitalWrite(LED_BUILTIN, HIGH); // turn the LED on
-      delay(500);             // wait for 500 milliseconds
-      digitalWrite(LED_BUILTIN, LOW);  // turn the LED off
-      delay(500);             // wait for 500 milliseconds
-    }
-
+  if (WebServer::init() != ESP_OK) {
+    Serial.println("Web server init failed");
+    return;
+  }
 
 }
 
