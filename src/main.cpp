@@ -2,6 +2,8 @@
 #include <WiFi.h>
 #include "camera_hal.h"
 #include "web_server.h"
+#include "wifi_config.h"
+
 
 // put function declarations here:
 
@@ -14,11 +16,9 @@ void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
+  Serial.println("WiFi connection starting...");
 
-  const char *ssid = "**********";
-  const char *password = "**********";
-
-  WiFi.begin(ssid, password);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
   WiFi.setSleep(false);
 
   while (WiFi.status() != WL_CONNECTED) {
