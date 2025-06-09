@@ -18,8 +18,8 @@ void setup() {
   Serial.println();
   Serial.println("WiFi connection starting...");
 
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  WiFi.setSleep(false);
+   WiFi.begin(WIFI_SSID, WIFI_PASS);
+   WiFi.setSleep(false);
 
   while (WiFi.status() != WL_CONNECTED) {
       delay(500);
