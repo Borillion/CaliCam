@@ -50,9 +50,16 @@ esp_err_t WebServer::init() {
         .user_ctx = NULL
     };
 
-    httpd_register_uri_handler(server, &uri);
-    httpd_register_uri_handler(server, &uri_stream); 
+    httpd_uri_t uri_html_stream = {
+        .uri = "/snapshot",
+        .method = HTTP_GET,
+        .handler = handle_snapshot,
+        .user_ctx = NULL
+    };
 
+    httpd_register_uri_handler(server, &uri);
+    httpd_register_uri_handler(server, &uri_stream);
+    httpd_register_uri_handler(server, &uri_html_stream);
 
     return ESP_OK;
 }
@@ -128,4 +135,36 @@ esp_err_t WebServer::handle_stream(httpd_req_t *req) {
         esp_camera_fb_return(frame);
 
     }
+}
+
+esp_err_t WebServer::handle_snapshot(httpd_req_t *req) {
+    Serial.println("Camera frame capture starting..");
+    // Get frame from camera
+    camera_fb_t *frame = esp_camera_fb_get();
+
+    if (!frame) {
+        Serial.println("Camera frame capture failed");
+        // return -1 if the frame was not captured
+        return ESP_FAIL;
+    }
+
+    // Set the mime type for the response
+    // Set the Content-Disposition header to inline, so the browser will display the image, default filename is capture.jpg when saved by user
+    // Allow any origin to access the image
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_set_hdr(req, "Content-Disposition", "inline; filename=capture.jpg");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    // Format timestamp from frame->timestamp to "seconds.microseconds"
+    char ts_header[32];
+    // snprintf formats the timestamp into a string with seconds and microseconds
+    snprintf(ts_header, sizeof(ts_header), "%ld.%06ld", frame->timestamp.tv_sec, frame->timestamp.tv_usec);
+    // Set the X-Timestamp header to unix style formatted timestamp
+    httpd_resp_set_hdr(req, "X-Timestamp", ts_header);
+
+    
+    esp_err_t res = httpd_resp_send(req, (const char *)frame->buf, frame->len);
+    esp_camera_fb_return(frame);
+
+    return res;
 }
