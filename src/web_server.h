@@ -12,6 +12,7 @@ class WebServer {
     static httpd_handle_t server;
     static esp_err_t handle_index(httpd_req_t *req);
     static esp_err_t handle_stream(httpd_req_t *req);
+    static esp_err_t handle_snapshot(httpd_req_t *req);
 };
 
 #endif
