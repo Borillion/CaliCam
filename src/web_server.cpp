@@ -177,8 +177,43 @@ esp_err_t WebServer::handle_snapshot(httpd_req_t *req) {
 }
 
 esp_err_t WebServer::handle_command(httpd_req_t *req) { 
-    // get the string from the request
-    // extract the var and value for each parameter
+
+    char param[256];
+    char key[32];
+    char val[32];
+    int value = 0;
+
+    // get the string from the request using req_get_url_query_str
+    esp_err_t res = httpd_req_get_url_query_str(req, param, sizeof(param));
+    if (res != ESP_OK) {
+        return res;
+    }
+    // ESP_OK has a zero val, so check if httpd_req_get_url_query_str returned the same.
+    if( res == ESP_OK) {
+        // extract the var and value for each parameter
+        esp_err_t res_var = httpd_query_key_value(param, "var", key, sizeof(key));
+        esp_err_t res_val = httpd_query_key_value(param, "val", val, sizeof(val));
+
+        if( res_var != ESP_OK )
+        {
+            Serial.println("Missing or invalid var parameter");
+            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Missing val parameter");
+            return ESP_FAIL;
+        }
+
+        if( res_val != ESP_OK )
+        {
+            Serial.println("Missing or invalid val parameter");
+            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Missing var parameter");
+            return ESP_FAIL;
+        }
+
+        value = std::stoi(val);
+        // Use serial printf for variables in the logging
+        Serial.printf("%s = %d\n", key, value);
+
+    }   
+    
     // get the camera sensor
     // set the corresponding values
     // handle unknown commands and errors
