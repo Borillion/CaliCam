@@ -50,16 +50,23 @@ esp_err_t WebServer::init() {
         .user_ctx = NULL
     };
 
-    httpd_uri_t uri_html_stream = {
+    httpd_uri_t uri_snapshot = {
         .uri = "/snapshot",
         .method = HTTP_GET,
         .handler = handle_snapshot,
         .user_ctx = NULL
     };
 
+    httpd_uri_t uri_cmd = {
+        .uri = "/control",
+        .method = HTTP_GET,
+        .handler = handle_command,
+        .user_ctx = NULL
+    };
+
     httpd_register_uri_handler(server, &uri);
     httpd_register_uri_handler(server, &uri_stream);
-    httpd_register_uri_handler(server, &uri_html_stream);
+    httpd_register_uri_handler(server, &uri_snapshot);
 
     return ESP_OK;
 }
@@ -167,4 +174,13 @@ esp_err_t WebServer::handle_snapshot(httpd_req_t *req) {
     esp_camera_fb_return(frame);
 
     return res;
+}
+
+esp_err_t WebServer::handle_command(httpd_req_t *req) { 
+    // get the string from the request
+    // extract the var and value for each parameter
+    // get the camera sensor
+    // set the corresponding values
+    // handle unknown commands and errors
+    // send response
 }
