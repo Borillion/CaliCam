@@ -73,9 +73,18 @@ esp_err_t WebServer::init() {
         .user_ctx = NULL
     };
 
+        httpd_uri_t stat_cmd = {
+        .uri = "/status",
+        .method = HTTP_GET,
+        .handler = handle_command,
+        .user_ctx = NULL
+    };
+
     httpd_register_uri_handler(server, &uri);
     httpd_register_uri_handler(server, &uri_stream);
     httpd_register_uri_handler(server, &uri_snapshot);
+    
+    httpd_register_uri_handler(server, &stat_cmd);
 
     return ESP_OK;
 }
@@ -291,4 +300,15 @@ esp_err_t WebServer::handle_command(httpd_req_t *req) {
     }   
 
      return ESP_FAIL;
+}
+
+esp_err_t WebServer::handle_status(httpd_req_t *req) {
+
+    static char json_response[1024];
+
+    sensor_t *sensor = esp_camera_sensor_get();
+    char *p_json = json_response;
+
+    Serial.printf("%d sensor detected.\n", sensor->id.PID);
+    return ESP_OK;
 }
