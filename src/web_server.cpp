@@ -37,6 +37,10 @@ typedef struct setting_handler_t {
     int (*handler)(sensor_t *, int);
 } setting_handler_t;
 
+static int print_reg(char *p_json, sensor_t *sensor, uint16_t reg, uint32_t mask){
+    return sprintf(p_json, "\"0x%x\":%u,", reg, sensor->get_reg(sensor, reg, mask));
+}
+
 esp_err_t WebServer::init() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
@@ -308,7 +312,112 @@ esp_err_t WebServer::handle_status(httpd_req_t *req) {
 
     sensor_t *sensor = esp_camera_sensor_get();
     char *p_json = json_response;
+    uint16_t installed_sensor = sensor->id.PID;
+    const char *name = camera_model_name(installed_sensor);
 
-    Serial.printf("%x sensor detected.\n", sensor->id.PID);
-    return ESP_OK;
+    Serial.printf("Detected camera: %x  - %s Sensor\n", installed_sensor, name);
+
+    *p_json++ = '{';
+
+    if (installed_sensor == OV5640_PID || installed_sensor == OV3660_PID) {
+        // read the AWB Manual Control register (bit 0: 0 = auto, 1 = manual)
+        p_json += print_reg(p_json, sensor, 0x3406, 0xFF);
+        // read the AEC Exposure Time High‑Byte register (shouldn't this be 0xFFFF 16 bits? exposure bits [19:16])
+        p_json += print_reg(p_json, sensor, 0x3500, 0xFFFF0);
+        // read the AEC Control register (manual/auto mode bits: bit 0 = AEC manual, bit 1 = AGC manual)
+        p_json += print_reg(p_json, sensor, 0x3503, 0xFF);
+        // read the AEC AGC gain low byte register (Gain[7:0])
+        p_json += print_reg(p_json, sensor, 0x350B, 0xFF);
+        // read the AEC extra-exposure high byte register (extends 20-bit exposure time)
+        p_json += print_reg(p_json, sensor, 0x350C, 0xFF);
+
+        // read the Gamma correction register [0x5480–0x5490]: part of gamma curve settings
+        for (int reg = 0x5480; reg <= 0x5490; reg++) {
+            p_json += print_reg(p_json, sensor, reg, 0xFF);
+        }
+
+        // read the Color Matrix control register [0x5380–0x538B]: coefficients for RGB-to-YUV conversion
+        for (int reg = 0x5380; reg <= 0x538B; reg++) {
+            p_json += print_reg(p_json, sensor, reg, 0xFF);
+        }
+
+        // read SDE (Special Digital Effects) UV-adjust control register [0x5580–0x5589]
+        for (int reg = 0x5580; reg < 0x558A; reg++) {
+            p_json += print_reg(p_json, sensor, reg, 0xFF);
+        }
+        // read SDE CTRL10 (0x558A): UV adjust threshold high bit (bit 0), mask 9 bits
+        p_json += print_reg(p_json, sensor, 0x558A, 0x1FF);
+
+    } else if (installed_sensor == OV2640_PID) {
+        // PLL control register (controls clock settings, frame rate, etc.)
+        p_json += print_reg(p_json, sensor, 0xd3, 0xFF);
+        // Clock divider register: sets the internal clock division ratio , influencing overall sensor speed
+        p_json += print_reg(p_json, sensor, 0x111, 0xFF);
+        // Unknown function register, is it undocumented?
+        p_json += print_reg(p_json, sensor, 0x132, 0xFF);
+    }
+
+    // Sensor master clock frequency in MHz (feeds the sensor timing block)
+    p_json += sprintf(p_json, "\"xclk\":%u,", sensor->xclk_freq_hz / 1000000);
+    // Pixel output format (e.g., JPEG, RGB565, GRAYSCALE, YUV422)
+    p_json += sprintf(p_json, "\"pixformat\":%u,", sensor->pixformat);
+    // Resolution / frame size selection (e.g., UXGA, SVGA, QVGA)
+    p_json += sprintf(p_json, "\"framesize\":%u,", sensor->status.framesize);
+    // JPEG compression quality (0 = max quality, 63 = lowest quality)
+    p_json += sprintf(p_json, "\"quality\":%u,", sensor->status.quality);
+    // Brightness adjustment level (signed: –2 = darker to +2 = brighter)
+    p_json += sprintf(p_json, "\"brightness\":%d,", sensor->status.brightness);
+    // Contrast adjustment (signed: –2 = low to +2 = high contrast)
+    p_json += sprintf(p_json, "\"contrast\":%d,", sensor->status.contrast);
+    // Color saturation adjustment (signed: –2 = desaturated to +2 = vivid)
+    p_json += sprintf(p_json, "\"saturation\":%d,", sensor->status.saturation);
+    // Sharpness (edge enhancement level: –2 = soft to +2 = sharp)
+    p_json += sprintf(p_json, "\"sharpness\":%d,", sensor->status.sharpness);
+    // DSP special effect mode (0 = none, 1 = negative, … 6 = sepia)
+    p_json += sprintf(p_json, "\"special_effect\":%u,", sensor->status.special_effect);
+    // White balance mode (0 = auto or preset value when AWB disabled)
+    p_json += sprintf(p_json, "\"wb_mode\":%u,", sensor->status.wb_mode);
+    // Auto White Balance enable flag (0 = off, 1 = on)
+    p_json += sprintf(p_json, "\"awb\":%u,", sensor->status.awb);
+    // AWB gain enable flag (0 = off, 1 = on; uses white balance gains)
+    p_json += sprintf(p_json, "\"awb_gain\":%u,", sensor->status.awb_gain);
+    // Auto Exposure Control enable flag (0 = off, 1 = on)
+    p_json += sprintf(p_json, "\"aec\":%u,", sensor->status.aec);
+    // AEC stage 2 enable (secondary exposure algorithm, 0 = off, 1 = on)
+    p_json += sprintf(p_json, "\"aec2\":%u,", sensor->status.aec2);
+    // AE compensation level (signed –2 = darker to +2 = brighter target)
+    p_json += sprintf(p_json, "\"ae_level\":%d,", sensor->status.ae_level);
+    // Manual exposure target when AEC is disabled (0–1200 typical)
+    p_json += sprintf(p_json, "\"aec_value\":%u,", sensor->status.aec_value);
+    // Auto Gain Control enable flag (0 = off, 1 = on)
+    p_json += sprintf(p_json, "\"agc\":%u,", sensor->status.agc);
+    // Manual AGC gain value when AGC is on (0–30 typical)
+    p_json += sprintf(p_json, "\"agc_gain\":%u,", sensor->status.agc_gain);
+    // Gain ceiling setting (0–6): maximum auto gain limit
+    p_json += sprintf(p_json, "\"gainceiling\":%u,", sensor->status.gainceiling);
+    // Black pixel compensation (defective pixel correction) flag
+    p_json += sprintf(p_json, "\"bpc\":%u,", sensor->status.bpc);
+    // White pixel compensation (defective pixel correction) flag
+    p_json += sprintf(p_json, "\"wpc\":%u,", sensor->status.wpc);
+    // Raw gamma correction enable flag (0 = off, 1 = on)
+    p_json += sprintf(p_json, "\"raw_gma\":%u,", sensor->status.raw_gma);
+    // Lens shading correction (vignetting compensation) flag
+    p_json += sprintf(p_json, "\"lenc\":%u,", sensor->status.lenc);
+    // Horizontal mirror image flag (flip left-right)
+    p_json += sprintf(p_json, "\"hmirror\":%u,", sensor->status.hmirror);
+    // Downsampling/Cropping Window enable (reduces output size)
+    p_json += sprintf(p_json, "\"dcw\":%u,", sensor->status.dcw);
+    // Colorbar test pattern output flag (0 = normal, 1 = test pattern)
+    p_json += sprintf(p_json, "\"colorbar\":%u", sensor->status.colorbar);
+
+    // Remove the last comma if present
+    if (*(p_json - 1) == ',') {
+        p_json--;
+    }
+    *p_json++ = '}';
+    *p_json = 0;
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, json_response, strlen(json_response));
 }
