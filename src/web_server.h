@@ -18,6 +18,7 @@ class WebServer {
     //Get camera status and settings as json
     static esp_err_t handle_status(httpd_req_t *req);
     //setclock
+    static esp_err_t handle_xclk(httpd_req_t *req);
     //getreg
     //setpll
     //setres

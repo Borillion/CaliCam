@@ -84,6 +84,13 @@ esp_err_t WebServer::init() {
         .user_ctx = NULL
     };
 
+    httpd_uri_t uri_stat = {
+        .uri = "/xclk",
+        .method = HTTP_GET,
+        .handler = handle_xclk,
+        .user_ctx = NULL
+    };
+
     httpd_register_uri_handler(server, &uri);
     httpd_register_uri_handler(server, &uri_stream);
     httpd_register_uri_handler(server, &uri_snapshot);
@@ -420,4 +427,52 @@ esp_err_t WebServer::handle_status(httpd_req_t *req) {
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     return httpd_resp_send(req, json_response, strlen(json_response));
+}
+
+esp_err_t WebServer::handle_xclk(httpd_req_t *req) {
+
+    char param[256];
+    char key[32];
+    char val[32];
+    int xclock = 0;
+
+    esp_err_t res = httpd_req_get_url_query_str(req, param, sizeof(param));
+    if (res != ESP_OK) {
+        return res;
+    }
+    // ESP_OK has a zero val, so check if httpd_req_get_url_query_str returned the same.
+    if (res == ESP_OK) {
+        // extract the var and value for each parameter
+        esp_err_t res_var = httpd_query_key_value(param, "var", key, sizeof(key));
+        esp_err_t res_val = httpd_query_key_value(param, "val", val, sizeof(val));
+
+        if (res_var != ESP_OK)
+        {
+            Serial.println("Missing or invalid var parameter");
+            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Missing val parameter");
+            return ESP_FAIL;
+        }
+
+        if (res_val != ESP_OK)
+        {
+            Serial.println("Missing or invalid val parameter");
+            httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "Missing var parameter");
+            return ESP_FAIL;
+        }
+
+        xclock = std::stoi(val);
+        // Use serial printf for variables in the logging
+        Serial.printf("%s = %d\n", key, xclock);
+
+        sensor_t *sensor = esp_camera_sensor_get();
+        int set_res = sensor->set_xclk(sensor, LEDC_TIMER_0, xclock);
+        if (set_res) {
+            return httpd_resp_send_500(req);
+        }
+
+        httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+        return httpd_resp_send(req, NULL, 0);
+    }
+
+    return ESP_FAIL;
 }
