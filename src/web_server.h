@@ -20,6 +20,7 @@ class WebServer {
     //setclock
     static esp_err_t handle_xclk(httpd_req_t *req);
     //getreg
+    static esp_err_t handle_getreg(httpd_req_t *req);
     //setpll
     //setres
 };
