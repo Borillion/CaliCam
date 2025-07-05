@@ -98,6 +98,12 @@ esp_err_t WebServer::init() {
         .user_ctx = NULL
     };
 
+    httpd_uri_t uri_sreg = {
+        .uri = "/sreg",
+        .method = HTTP_GET,
+        .handler = handle_setreg,
+        .user_ctx = NULL
+};
 
     httpd_register_uri_handler(server, &uri);
     httpd_register_uri_handler(server, &uri_stream);
@@ -105,6 +111,7 @@ esp_err_t WebServer::init() {
     httpd_register_uri_handler(server, &uri_cmd);
     httpd_register_uri_handler(server, &uri_stat);
     httpd_register_uri_handler(server, &uri_greg);
+    httpd_register_uri_handler(server, &uri_sreg);
 
     return ESP_OK;
 }
@@ -532,8 +539,70 @@ esp_err_t WebServer::handle_getreg(httpd_req_t *req) {
 
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_type(req, "application/json");
+    
     // HTTPD_RESP_USE_STRLEN is a special constant defined in ESP-IDF used with httpd_resp_send() 
     // to automatically calculate the string length using strlen() instead of manually specifying it.
     // Consider fixing the rest of the code to use this instead of strlen over and over?
     return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
 }
+
+esp_err_t WebServer::handle_setreg(httpd_req_t *req) {
+    
+    char param[256];
+    char reg_str[16];
+    char val_str[16];
+    char mask_str[16];
+    char response[64];
+
+    esp_err_t res = httpd_req_get_url_query_str(req, param, sizeof(param));
+    if (res != ESP_OK) {
+        return res;
+    }
+
+    // extract the var and value for each parameter
+    esp_err_t res_var = httpd_query_key_value(param, "register", reg_str, sizeof(reg_str));
+    esp_err_t res_mask = httpd_query_key_value(param, "mask", mask_str, sizeof(mask_str));
+    esp_err_t res_val = httpd_query_key_value(param, "value", val_str, sizeof(val_str));
+
+    if (res_var != ESP_OK) {
+        Serial.println("Missing or invalid 'register' parameter");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing register parameter");
+        return ESP_FAIL;
+    }
+
+    if (res_mask != ESP_OK) {
+        Serial.println("Missing or invalid 'mask' parameter");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mask parameter");
+        return ESP_FAIL;
+    }
+
+    if (res_val != ESP_OK) {
+        Serial.println("Missing or invalid 'mask' parameter");
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing mask parameter");
+        return ESP_FAIL;
+    }
+
+    int reg = strtol(reg_str, NULL, 0);
+    int mask = strtol(mask_str, NULL, 0);
+    int value = strtol(val_str, NULL,0);
+
+    Serial.printf("register: 0x%04x, mask: 0x%04x, value: 0x%08x, masked value: 0x%08x\n",
+        reg, mask, value, (value & mask));
+
+    snprintf(response, sizeof(response),
+             "{ \"reg\": \"0x%X\", \"mask\": \"0x%X\", \"value\": \"0x%X\", \"masked\": \"0x%X\" }",
+             reg, mask, value, value & mask);
+
+
+    sensor_t *sensor = esp_camera_sensor_get();
+    int res = sensor->set_reg(sensor, reg, mask, value);
+    if (res) {
+        return httpd_resp_send_500(req);
+    }
+
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_type(req, "application/json");
+
+    return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
+}
+
