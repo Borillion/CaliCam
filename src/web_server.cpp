@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "web_server.h"
 #include <esp_camera.h>
+#include "camera_hal.h"
 
 httpd_handle_t WebServer::server = NULL;
 
@@ -27,6 +28,14 @@ static const char* HTML = R"(
 </body>
 </html>
 )";
+
+typedef struct setting_handler_t {
+    //pointer to the setting string
+    const char *key;
+    //pointer to function that sets the variable
+    //passing two arguments, the camera sensor struct ( im sensor.h), and val to set
+    int (*handler)(sensor_t *, int);
+} setting_handler_t;
 
 esp_err_t WebServer::init() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
@@ -182,6 +191,7 @@ esp_err_t WebServer::handle_command(httpd_req_t *req) {
     char key[32];
     char val[32];
     int value = 0;
+    
 
     // get the string from the request using req_get_url_query_str
     esp_err_t res = httpd_req_get_url_query_str(req, param, sizeof(param));
@@ -208,14 +218,77 @@ esp_err_t WebServer::handle_command(httpd_req_t *req) {
             return ESP_FAIL;
         }
 
-        value = std::stoi(val);
-        // Use serial printf for variables in the logging
-        Serial.printf("%s = %d\n", key, value);
-
-    }   
+            value = std::stoi(val);
+            // Use serial printf for variables in the logging
+            Serial.printf("%s = %d\n", key, value);
     
-    // get the camera sensor
-    // set the corresponding values
-    // handle unknown commands and errors
-    // send response
+            // get the camera sensor
+            sensor_t *sensor = CameraHal::get_sensor();
+            if(!sensor) {
+                Serial.println("Failed to get camera sensor");
+                return ESP_FAIL;
+            }
+    
+
+        // set the corresponding values
+        // We could set the variables using strcmp and a big if-else block, 
+        // but there is a better way with dispatch tables and lambda functions
+
+
+        // Each key associates a lambda function that takes a pointer to the sensor struct and an val to set
+        // The lambda then calls the setter function on for each paramter to update that particular setting.
+        static setting_handler_t handlers[] = {
+            { "framesize", [](sensor_t *s, int val) {
+                return s->pixformat == PIXFORMAT_JPEG ? s->set_framesize(s, (framesize_t)val) : ESP_OK;
+            }},
+            //key              []inherit nothing into the lambda function, (sensor_t *s, int val) the function takes two parameters.
+            { "contrast",      [](sensor_t *s, int val) { return s->set_contrast(s, val); } },
+            { "brightness",    [](sensor_t *s, int val) { return s->set_brightness(s, val); } },
+            { "saturation",    [](sensor_t *s, int val) { return s->set_saturation(s, val); } },
+            { "gainceiling",   [](sensor_t *s, int val) { return s->set_gainceiling(s, (gainceiling_t)val); } },
+            { "quality",       [](sensor_t *s, int val) { return s->set_quality(s, val); } },
+            { "colorbar",      [](sensor_t *s, int val) { return s->set_colorbar(s, val); } },
+            { "awb",           [](sensor_t *s, int val) { return s->set_whitebal(s, val); } },
+            { "agc",           [](sensor_t *s, int val) { return s->set_gain_ctrl(s, val); } },
+            { "aec",           [](sensor_t *s, int val) { return s->set_exposure_ctrl(s, val); } },
+            { "hmirror",       [](sensor_t *s, int val) { return s->set_hmirror(s, val); } },
+            { "vflip",         [](sensor_t *s, int val) { return s->set_vflip(s, val); } },
+            { "aec2",          [](sensor_t *s, int val) { return s->set_aec2(s, val); } },
+            { "awb_gain",      [](sensor_t *s, int val) { return s->set_awb_gain(s, val); } },
+            { "agc_gain",      [](sensor_t *s, int val) { return s->set_agc_gain(s, val); } },
+            { "aec_value",     [](sensor_t *s, int val) { return s->set_aec_value(s, val); } },
+            { "special_effect",[](sensor_t *s, int val) { return s->set_special_effect(s, val); } },
+            { "wb_mode",       [](sensor_t *s, int val) { return s->set_wb_mode(s, val); } },
+            { "ae_level",      [](sensor_t *s, int val) { return s->set_ae_level(s, val); } },
+            { "dcw",           [](sensor_t *s, int val) { return s->set_dcw(s, val); } },
+            { "bpc",           [](sensor_t *s, int val) { return s->set_bpc(s, val); } },
+            { "wpc",           [](sensor_t *s, int val) { return s->set_wpc(s, val); } },
+            { "raw_gma",       [](sensor_t *s, int val) { return s->set_raw_gma(s, val); } },
+            { "lenc",          [](sensor_t *s, int val) { return s->set_lenc(s, val); } }
+        };
+
+        // Check if the provided key matches any known handler; handle unknown commands below.
+        // Get the number of handlers in the handlers struct
+        #define NUM_HANDLERS (sizeof(handlers) / sizeof(handlers[0]))
+
+        res = -1;
+
+        for(int i = 0; i < NUM_HANDLERS; i++){
+            if (!strcmp(key, handlers[i].key)) {
+                res = handlers[i].handler(sensor, value);
+                break;
+            }
+        }
+        if (res == -1) {
+            Serial.println("Unknown command");
+            return ESP_FAIL;
+        }
+
+        // send response
+        httpd_resp_sendstr(req, "OK");
+        return ESP_OK;
+       
+    }   
+
+     return ESP_FAIL;
 }
