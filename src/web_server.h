@@ -24,6 +24,7 @@ class WebServer {
     //set reg
     static esp_err_t handle_setreg(httpd_req_t *req);
     //setpll
+    static esp_err_t handle_setpll(httpd_req_t *req);
     //setres
 };
 

@@ -31,7 +31,6 @@ class CameraHal {
   public:
     static esp_err_t init();
     static sensor_t* get_sensor();
-
   private:
     static camera_config_t create_config();
     static void configure_sensor(sensor_t* sensor);

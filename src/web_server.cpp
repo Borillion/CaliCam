@@ -103,7 +103,14 @@ esp_err_t WebServer::init() {
         .method = HTTP_GET,
         .handler = handle_setreg,
         .user_ctx = NULL
-};
+    };
+
+    httpd_uri_t uri_spll = {
+        .uri = "/spll",
+        .method = HTTP_GET,
+        .handler = handle_setreg,
+        .user_ctx = NULL
+    };
 
     httpd_register_uri_handler(server, &uri);
     httpd_register_uri_handler(server, &uri_stream);
@@ -112,6 +119,7 @@ esp_err_t WebServer::init() {
     httpd_register_uri_handler(server, &uri_stat);
     httpd_register_uri_handler(server, &uri_greg);
     httpd_register_uri_handler(server, &uri_sreg);
+    httpd_register_uri_handler(server, &uri_spll);
 
     return ESP_OK;
 }
@@ -539,7 +547,7 @@ esp_err_t WebServer::handle_getreg(httpd_req_t *req) {
 
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_type(req, "application/json");
-    
+
     // HTTPD_RESP_USE_STRLEN is a special constant defined in ESP-IDF used with httpd_resp_send() 
     // to automatically calculate the string length using strlen() instead of manually specifying it.
     // Consider fixing the rest of the code to use this instead of strlen over and over?
@@ -606,3 +614,67 @@ esp_err_t WebServer::handle_setreg(httpd_req_t *req) {
     return httpd_resp_send(req, response, HTTPD_RESP_USE_STRLEN);
 }
 
+esp_err_t WebServer::handle_setpll(httpd_req_t *req) {
+    char param[256];
+
+    // Struct for holding PLL Parameters
+    typedef struct {
+        int bypass;
+        int mul;
+        int sys;
+        int root;
+        int pre;
+        int seld5;
+        int pclken;
+        int pclk;
+    } pll_params_t;
+
+    typedef struct {
+        const char *key;
+        int *field;
+    } param_map_t;
+
+    // Fetch URL query string
+    esp_err_t res = httpd_req_get_url_query_str(req, param, sizeof(param));
+    if (res != ESP_OK) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing PLL Parameters");
+    }
+
+    // Zero initialize PLL struct
+    pll_params_t pll = {0};
+
+    // Mapping of query keys to struct fields
+    param_map_t map[] = {
+        { "bypass",  &pll.bypass  },
+        { "mul",     &pll.mul     },
+        { "sys",     &pll.sys     },
+        { "root",    &pll.root    },
+        { "pre",     &pll.pre     },
+        { "seld5",   &pll.seld5   },
+        { "pclken",  &pll.pclken  },
+        { "pclk",    &pll.pclk    },
+    };
+
+    // Parse each key from the URL query
+    for (int i = 0; i < sizeof(map) / sizeof(map[0]); i++) {
+        char val[16] = {0};
+        if (httpd_query_key_value(param, map[i].key, val, sizeof(val)) == ESP_OK) {
+            *(map[i].field) = atoi(val);
+        }
+    }
+
+    // Print for debugging
+    Serial.printf("Set PLL: bypass=%d, mul=%d, sys=%d, root=%d, pre=%d, seld5=%d, pclken=%d, pclk=%d\n",
+        pll.bypass, pll.mul, pll.sys, pll.root, pll.pre, pll.seld5, pll.pclken, pll.pclk);
+
+    sensor_t *sensor = esp_camera_sensor_get();
+    if (sensor->set_pll(sensor, pll.bypass, pll.mul, pll.sys, pll.root, pll.pre, pll.seld5, pll.pclken, pll.pclk)) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to set PLL");
+    }
+
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    // More informative response:
+    const char *ok_msg = "PLL parameters set";
+    return httpd_resp_send(req, ok_msg, HTTPD_RESP_USE_STRLEN);
+}
