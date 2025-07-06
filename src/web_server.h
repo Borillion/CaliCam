@@ -26,6 +26,7 @@ class WebServer {
     //setpll
     static esp_err_t handle_setpll(httpd_req_t *req);
     //setres
+    static esp_err_t handle_setresolution(http_req_t *req);
 };
 
 #endif
