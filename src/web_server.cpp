@@ -615,6 +615,7 @@ esp_err_t WebServer::handle_setreg(httpd_req_t *req) {
 }
 
 esp_err_t WebServer::handle_setpll(httpd_req_t *req) {
+
     char param[256];
 
     // Struct for holding PLL Parameters
@@ -677,4 +678,80 @@ esp_err_t WebServer::handle_setpll(httpd_req_t *req) {
     // More informative response:
     const char *ok_msg = "PLL parameters set";
     return httpd_resp_send(req, ok_msg, HTTPD_RESP_USE_STRLEN);
+}
+
+esp_err_t handle_setresolution(httpd_req_t *req){
+
+    char param[256];
+
+    typedef struct {
+        // set the subrectangle of the image sensor output 
+        // from which data will be read, useful for zoom or edge noise removal
+        int startX;
+        int startY;
+        int endX;
+        int endY;
+
+        //Offset the window to fine tune alignment
+        // Perhaps to adjust for lens misalignment?
+        int offsetX;
+        int offsetY;
+
+        // Total X Y capture space of sensor
+        int totalX;
+        int totalY;
+
+        // Output resolution or final framebuffer size
+        int outputX;
+        int outputY;
+
+        // Hardware or software image scaling switch
+        bool scale;
+
+        // Combine adjecent pixels for better low light resolution
+        // Improve signal to noise ratio, but reduces the pixel count
+        bool binning;
+    } resolution_params_t;
+
+
+    typedef struct {
+        const char *key;
+        int *field;
+    } param_map_t;
+
+    typedef struct {
+        const char *key;
+        bool *field;
+    } bool_param_map_t;
+
+    resolution_params_t res_params = {0}; 
+
+    // Get the full query string (e.g., ?sx=0&sy=0&...)
+    esp_err_t result = httpd_req_get_url_query_str(req, param, sizeof(param));
+    if (result != ESP_OK) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Missing resolution parameters");
+    }
+
+    // Map of parameter names to fields in the struct
+    param_map_t param_map[] = {
+        { "sx",   &res_params.startX },
+        { "sy",   &res_params.startY },
+        { "ex",   &res_params.endX },
+        { "ey",   &res_params.endY },
+        { "offx", &res_params.offsetX },
+        { "offy", &res_params.offsetY },
+        { "tx",   &res_params.totalX },
+        { "ty",   &res_params.totalY },
+        { "ox",   &res_params.outputX },
+        { "oy",   &res_params.outputY },  
+    };
+
+        // Boolean parameter mapping
+        bool_param_map_t bool_map[] = {
+        { "scale",   &res_params.scale },
+        { "binning", &res_params.binning }
+    };
+
+
+
 }
