@@ -7,5 +7,5 @@
 .DS_Store
 
 # WiFi credentials
-./include/wifi_config.h
-include/wifi_config.h
+/include/wifi_config.h
+
